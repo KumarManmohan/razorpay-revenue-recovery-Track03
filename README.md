@@ -116,8 +116,6 @@ During development, several non-trivial failures across systems boundaries were 
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-> **Design Refinement Note**: During Dashboard polish, an attempt was made to enlarge typography on Cards 3 and 4 to fill whitespace. Inspection revealed this distorted visual balance without adding operational value. The change was rejected and replaced with structured contextual footers (`1 case awaiting merchant review` / `₹2.69L recovered · ₹5.57L processed`).
-
 ---
 
 ## 📊 Data Tiers & Canonical Evidence Isolation
