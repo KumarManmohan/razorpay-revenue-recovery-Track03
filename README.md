@@ -9,7 +9,7 @@ An AI-assisted revenue recovery system for failed Razorpay payments where AI rec
 Payment failures in online commerce are a major source of revenue leakage, yet recovering them is non-trivial:
 
 * **Aggressive Automation Risks**: Naive auto-retrying or spamming customers with payment links annoys legitimate buyers, damages brand trust, and risks chargebacks.
-* **Passive Abandonment Costs**: Doing nothing or relying on generic manual follow-up leaves 30–40% of recoverable technical or transient card failures on the table.
+* **Passive Abandonment Costs**: Doing nothing leaves potentially recoverable failed payments unresolved.
 * **Complex Multi-Signal Context**: A failed transaction is not a single error code—it involves customer tenure, transaction size, failure history, risk classifications, and payment methods.
 * **The Engineering Challenge**: Effective recovery requires balancing **contextual intelligence** (diagnosing *why* a failure occurred and *how* to approach the customer) with **strict deterministic financial safety** (ensuring AI cannot overcharge, bypass fraud blocks, exceed retry budgets, or double-count reconciled revenue).
 
@@ -82,8 +82,8 @@ During development, several non-trivial failures across systems boundaries were 
 │ 1. NON-DETERMINISTIC EVALUATION BENCHMARK                                                                   │
 │    Symptom:      Running the identical Seed-42 benchmark produced 30.8% in one run and 41.3% in a subsequent│
 │                  run, despite identical decision inputs and safety classifications.                         │
-│    Root Cause:   Per-case RNG seeding relied on Python's built-in hash() function, which utilizes a randomized│
-│                  process-level seed for security (SIPHASH-24), causing cross-process variance.               │
+│    Root Cause:   Per-case RNG seeding relied on Python's process-randomized built-in hash() function, which is│
+│                  unsuitable for reproducible RNG seeding across independent processes.                      │
 │    Fix:          Replaced process-dependent hash() with deterministic SHA-256 seed generation.              │
 │    Verification: Verified exact mathematical reproducibility across isolated runs (Canonical 36.6% baseline).│
 ├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
