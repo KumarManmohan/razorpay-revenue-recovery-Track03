@@ -125,7 +125,7 @@ The system strictly enforces physical separation between operational merchant re
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ 1. OPERATIONAL LEDGER (data/recovery.db)                                                                    │
-│    * Genuine Razorpay Test Mode webhook events, test captures, and live Razorpay payment links.             │
+│    * Genuine Razorpay Test Mode webhook events, test captures, and active Razorpay Test Mode Payment Links. │
 │    * Curated demo scenario cases covering all 9 failure categories for interactive UI walkthroughs.         │
 │    * Powers the Merchant Recovery Dashboard (GET /recovery/stats, GET /recovery/cases).                     │
 │    * Observed in Razorpay Test Mode; not real merchant money.                                               │
@@ -142,7 +142,7 @@ The system strictly enforces physical separation between operational merchant re
 ## 📈 Canonical Evidence Scorecard
 
 ### A. Real Razorpay Test Mode Proof (`data/recovery.db`)
-* **Real Operational Recovery**: **11 recovered Test Mode cases** totaling **₹2,53,863.30** (accounting for **94.4%** of all recovered revenue in the operational ledger).
+* **Verified Razorpay Test Mode Recovery**: **11 recovered Test Mode cases** totaling **₹2,53,863.30** (accounting for **94.4%** of all recovered revenue in the operational ledger).
 * **Payment Lifecycle**: Real `payment.failed` webhook $\rightarrow$ recovery link created $\rightarrow$ payer completed in Test Mode $\rightarrow$ `payment.captured` reconciliation.
 * **Retry Exhaustion**: Verified on real 3-attempt failure case (`case_order_TU4S0Jyoa0yEGc`, ₹7,859) with automatic link cancellation and execution halt.
 * **Active Demo Link**: Verified active Test Mode Payment Link (`case_order_TUWjnc8gGMZDOw`, ₹1,001) available for live completion during walkthroughs.
@@ -199,13 +199,12 @@ Razorpay Track 03/
 │   ├── contextual_evaluator.py# 16-case contextual AI evaluation engine
 │   └── main.py                # FastAPI application, security middleware & REST routes
 ├── frontend/                  # React 19 + Vite Merchant Dashboard
-│   ├── src/
-│   │   ├── components/        # Header, Sidebar, StatsOverview, CasesTable,
-│   │   │                      # CaseDetailModal, AuditLogView, EvaluationView, Toast
-│   │   ├── api.js             # REST API Client with optional X-API-Key forwarding
-│   │   ├── App.jsx            # Main Dashboard Application
-│   │   └── index.css          # Modern light fintech design system
-│   └── dist/                  # Production build assets
+│   └── src/
+│       ├── components/        # Header, Sidebar, StatsOverview, CasesTable,
+│       │                      # CaseDetailModal, AuditLogView, EvaluationView, Toast
+│       ├── api.js             # REST API Client with optional X-API-Key forwarding
+│       ├── App.jsx            # Main Dashboard Application
+│       └── index.css          # Modern light fintech design system
 ├── scripts/
 │   ├── seed_demo_data.py      # Demo dataset seeding script
 │   ├── inspect_real_cases.py  # Diagnostic script for real Razorpay test cases
@@ -233,7 +232,7 @@ cp .env.example .env
 | `RAZORPAY_KEY_ID` | Razorpay Test Mode Key ID (e.g. `rzp_test_...`). |
 | `RAZORPAY_KEY_SECRET` | Razorpay Test Mode Key Secret for authenticated API operations. |
 | `RAZORPAY_WEBHOOK_SECRET` | Webhook secret for HMAC-SHA256 signature verification. |
-| `GEMINI_API_KEY` | Google Gemini API Key (Free Tier supported). Enables contextual AI reasoning. |
+| `GEMINI_API_KEY` | Google Gemini API key for contextual AI reasoning. |
 | `MERCHANT_API_KEY` | Optional security key protecting administrative mutation endpoints. |
 | `ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins (default: `http://localhost:5173,http://localhost:8000`). |
 
