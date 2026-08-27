@@ -567,6 +567,23 @@ async def razorpay_webhook(
                         },
                     )
 
+            # 5. Automatic Test-Safe Customer Communication for Eligible Cases
+            active_plink_url = existing_link_url if existing_link_id else exec_result.get("payment_link_url")
+            customer_contact = latest_case.get("customer_id") or risk_analysis.get("customer_id")
+            if active_plink_url and customer_contact:
+                try:
+                    send_recovery_notification(
+                        case_id=case_id,
+                        recipient=customer_contact,
+                        payment_link_url=active_plink_url,
+                        amount=float(risk_analysis.get("amount") or 0.0),
+                        currency=risk_analysis.get("currency", "INR"),
+                        failure_category=risk_analysis.get("failure_category"),
+                        channel="EMAIL",
+                    )
+                except Exception as notif_err:
+                    logger.error(f"[Auto-Notification Error] Failed to dispatch customer notification for case '{case_id}': {notif_err}")
+
         return {
             "status": "received",
             "event": event_name,
@@ -808,6 +825,22 @@ def approve_recovery_case(case_id: str, request: Request, body: ApprovalRequest 
                 "amount": execution_result.get("amount"),
             },
         )
+        # Automatic customer notification post-approval
+        plink_url = execution_result.get("payment_link_url")
+        customer_contact = updated_case.get("customer_id")
+        if plink_url and customer_contact:
+            try:
+                send_recovery_notification(
+                    case_id=updated_case["id"],
+                    recipient=customer_contact,
+                    payment_link_url=plink_url,
+                    amount=float(updated_case.get("amount") or 0.0),
+                    currency=updated_case.get("currency", "INR"),
+                    failure_category=updated_case.get("failure_category"),
+                    channel="EMAIL",
+                )
+            except Exception as notif_err:
+                logger.error(f"[Auto-Notification Error] Failed post-approval dispatch for case '{updated_case['id']}': {notif_err}")
 
     return {
         "status": "approved_and_executed",
@@ -869,6 +902,7 @@ def notify_customer_for_case(case_id: str, request: Request, body: NotificationR
         payment_link_url=plink_url,
         amount=case.get("amount", 0.0),
         currency=case.get("currency", "INR"),
+        failure_category=case.get("failure_category"),
         channel=body.channel or "EMAIL",
     )
 
