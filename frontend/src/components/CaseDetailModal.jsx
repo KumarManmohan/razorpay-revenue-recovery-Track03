@@ -177,6 +177,16 @@ export default function CaseDetailModal({
     },
   ];
 
+  const linkAuditEvents = Array.isArray(auditTrail)
+    ? auditTrail.filter((ev) =>
+        ['PAYMENT_PATH_PRESERVED', 'PAYMENT_LINK_CREATED', 'RECOVERY_LINK_CREATED'].includes(ev.event_type)
+      )
+    : [];
+  const latestLinkEvent = linkAuditEvents.length > 0 ? linkAuditEvents[linkAuditEvents.length - 1] : null;
+  const isLinkPreserved = latestLinkEvent
+    ? latestLinkEvent.event_type === 'PAYMENT_PATH_PRESERVED'
+    : Boolean(caseData.original_payment_link_id && caseData.original_payment_link_id === caseData.payment_link_id);
+
   const hasActiveOrRecoveredLink =
     !isExhausted &&
     !isRejected &&
@@ -188,12 +198,21 @@ export default function CaseDetailModal({
     );
 
   if (hasActiveOrRecoveredLink) {
-    lifecycleSteps.push({
-      title: 'Link Issued',
-      desc: caseData.payment_link_id ? 'Razorpay Test Link' : 'Active Link',
-      status: 'completed',
-      icon: Send,
-    });
+    if (isLinkPreserved) {
+      lifecycleSteps.push({
+        title: 'Recovery Link Preserved',
+        desc: 'Existing Razorpay Test Link',
+        status: 'completed',
+        icon: Send,
+      });
+    } else {
+      lifecycleSteps.push({
+        title: 'Link Issued',
+        desc: caseData.payment_link_id ? 'Razorpay Test Link' : 'Active Link',
+        status: 'completed',
+        icon: Send,
+      });
+    }
   }
 
   if (isRecovered) {
