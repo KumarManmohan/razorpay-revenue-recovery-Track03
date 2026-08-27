@@ -32,11 +32,13 @@ Razorpay Webhook (payment.failed)
         ↓
 [ Layer 6: Guarded Execution Engine ] ────── Authoritative Amount Binding & Sibling Link Voiding
         ↓
-Razorpay Payment Link (Test Mode)
+Razorpay Payment Link (Test Mode: Created / Preserved)
+        ↓
+[ Layer 7: Category-Aware Customer Outreach ] ─ Deterministic Templates + Anti-Spam (Mock/Test Mode)
         ↓
 Customer Payment Webhook (payment.captured / payment_link.paid)
         ↓
-[ Layer 7: Financial Reconciliation ] ────── Idempotent Ledger Update & Automatic Sibling Cancellation
+[ Layer 8: Financial Reconciliation ] ────── Idempotent Ledger Update & Automatic Sibling Cancellation
         ↓
 Recovered Revenue + Chronological Audit Trail
 ```
@@ -45,9 +47,9 @@ Recovered Revenue + Chronological Audit Trail
 
 ## 🧠 AI Judgment: What AI Does vs What Deterministic Code Controls
 
-> **Core Principle: AI recommends. Policy governs. Execution enforces.**
+> **Core Principle: AI recommends. Policy governs. Execution enforces. Notification communicates.**
 
-The system uses LLMs where unstructured reasoning and contextual prioritization add value, but deliberately restricts the model from having direct financial execution authority.
+The system uses LLMs where unstructured reasoning and contextual prioritization add value, but deliberately restricts the model from having direct financial execution or unrestricted communication authority.
 
 | Decision / Operational Boundary | Handled By | Why This Boundary Exists |
 | :--- | :---: | :--- |
@@ -57,8 +59,18 @@ The system uses LLMs where unstructured reasoning and contextual prioritization 
 | **Fraud & Security Halts** | **Deterministic Policy** | Stolen card or compliance errors (`FRAUD_OR_SECURITY`) force `NO_ACTION` and block automated outreach. |
 | **Retry Exhaustion Limits** | **Deterministic Policy** | Enforces a hard stop after $\ge 3$ failed attempts (`MAX_FAILED_ATTEMPTS = 3`), automatically cancelling open links. |
 | **Financial Execution & Link Issuance** | **Deterministic Engine** | Links are generated strictly via authenticated Razorpay SDK calls with amounts bound from the database case. |
+| **Customer Communication & Guidance** | **Deterministic Notification Layer** | Customer messages use deterministic, category-aware templates (Mock/Test Mode) governed by policy and anti-spam controls. The LLM does not generate free-form customer copy. |
 | **Payment Reconciliation** | **Deterministic Engine** | Reconciles captured payments idempotently based on cryptographically signed Razorpay webhook payloads. |
 | **Sibling Link Cancellation** | **Deterministic Engine** | Voiding open secondary links upon payment is executed deterministically to prevent duplicate customer charges. |
+
+### 📬 Deterministic Customer Communication Governance
+
+The system implements a category-aware customer communication layer (Mock/Test Mode):
+
+* **Permitted Categories (Actionable Guidance)**: `BANK_DECLINED`, `INSUFFICIENT_FUNDS`, `CARD_LIMIT_EXCEEDED`, `CARD_EXPIRED`, `INVALID_CARD`, and `AUTHENTICATION_REQUIRED` receive deterministic, category-specific advice and the active recovery link.
+* **Suppressed States (Zero Outreach)**: Automated outreach is strictly suppressed for `TEMPORARY_GATEWAY_ERROR` (deferred hold), `FRAUD_OR_SECURITY` (compliance halt), `UNKNOWN` (investigation required), retry-exhausted cases, and unapproved high-value transactions ($\ge ₹50,000$).
+* **New vs. Preserved Links**: Newly generated recovery links dispatch an initial test notification. When an existing active link is preserved (`PAYMENT_PATH_PRESERVED`), the notification layer reuses that same active link without creating duplicate obligations, while anti-spam deduplication suppresses redundant sends.
+* **Manual vs. Automatic Outreach**: The dashboard's *"Send Test Notification"* control allows manual merchant-triggered testing; the automatic path triggers immediately upon eligible recovery link generation/preservation. Both share the same test-safe mock provider, deterministic templates, and anti-spam/audit controls.
 
 ---
 
@@ -143,7 +155,7 @@ The system strictly enforces physical separation between operational merchant re
 
 ### A. Real Razorpay Test Mode Proof (`data/recovery.db`)
 * **Verified Razorpay Test Mode Recovery**: **11 recovered Test Mode cases** totaling **₹2,53,863.30** (accounting for **94.4%** of all recovered revenue in the operational ledger).
-* **Payment Lifecycle**: Real `payment.failed` webhook $\rightarrow$ recovery link created $\rightarrow$ payer completed in Test Mode $\rightarrow$ `payment.captured` reconciliation.
+* **Payment Lifecycle**: Real `payment.failed` webhook $\rightarrow$ recovery link created/preserved $\rightarrow$ automatic test-mode customer notification $\rightarrow$ payer completed in Test Mode $\rightarrow$ `payment.captured` reconciliation.
 * **Retry Exhaustion**: Verified on real 3-attempt failure case (`case_order_TU4S0Jyoa0yEGc`, ₹7,859) with automatic link cancellation and execution halt.
 * **Active Demo Link**: Verified active Test Mode Payment Link (`case_order_TUWjnc8gGMZDOw`, ₹1,001) available for live completion during walkthroughs.
 
@@ -175,6 +187,7 @@ The system strictly enforces physical separation between operational merchant re
 * **Payload Size Protection**: Middleware enforces a 512 KB request ceiling (`MAX_REQUEST_BODY_SIZE_BYTES`), preventing memory exhaustion attacks.
 * **Error Sanitization**: Unhandled server exceptions return sanitized JSON responses with internal reference IDs (`err_...`), preventing database paths or stack traces from leaking to clients.
 * **SQL Injection Immunity**: 100% parameterized SQLite queries across all CRUD operations.
+* **Customer Outreach Governance**: Automated test-safe customer notifications (Mock/Test Mode) are governed by deterministic policy suppression (blocking fraud, exhausted, and unapproved states), recipient PII masking (`_mask_recipient`), and anti-spam deduplication (enforcing at most one recovery dispatch per case).
 
 ---
 
@@ -211,7 +224,7 @@ Razorpay Track 03/
 │   ├── run_batch_evaluation.py# Batch evaluation runner
 │   └── run_contextual_evaluation.py # Contextual evaluation runner
 ├── data/                      # SQLite storage (recovery.db & evaluation.db, gitignored)
-├── tests/                     # 200 Automated unit and integration tests (100% passing)
+├── tests/                     # 209 Automated unit and integration tests (100% passing)
 ├── .env.example               # Sanitized template for environment variables
 ├── requirements.txt           # Python backend dependencies
 └── README.md                  # Engineering documentation
@@ -275,7 +288,7 @@ npm run build
 
 ## 🧪 Running Automated Tests
 
-The complete backend regression test suite contains **200 automated tests** (100% passing):
+The complete backend regression test suite contains **209 automated tests** (100% passing):
 
 ```powershell
 .\venv\Scripts\python.exe -m unittest discover tests
