@@ -60,12 +60,20 @@ export default function CaseDetailModal({
   const isExecuted = caseData.execution_status === 'executed';
   const isRejected = caseData.execution_status === 'rejected';
   const isRecovered = caseData.execution_status === 'recovered';
-  const isExhausted = caseData.execution_status === 'exhausted';
+  const isCurrentlyExhausted = caseData.execution_status === 'exhausted';
+  const wasExhausted = Boolean(
+    caseData.failure_category === 'RECOVERY_EXHAUSTED' ||
+    (caseData.decision_reason || '').includes('retry limit exhausted') ||
+    (caseData.cancelled_payment_links && caseData.cancelled_payment_links.includes(caseData.payment_link_id)) ||
+    (Array.isArray(auditTrail) && auditTrail.some((ev) => ev.event_type === 'RECOVERY_EXHAUSTED'))
+  );
+  const isPostExhaustionRecovered = isRecovered && wasExhausted;
+  const isExhausted = isCurrentlyExhausted || (wasExhausted && !isRecovered);
   const isFraud = caseData.failure_category === 'FRAUD_OR_SECURITY';
   const isWait = caseData.decision_action === 'WAIT';
   const isInvestigate = caseData.decision_action === 'INVESTIGATE';
   const isInvoice = caseData.decision_action === 'SEND_INVOICE';
-  const requiresApproval = (caseData.requires_human_approval === 1 || caseData.execution_status === 'approval_required') && !isRecovered && !isRejected && !isExhausted;
+  const requiresApproval = (caseData.requires_human_approval === 1 || caseData.execution_status === 'approval_required') && !isRecovered && !isRejected && !isExhausted && !isPostExhaustionRecovered;
   const isDemo = (caseData.id || '').startsWith('case_demo_');
 
   const formatTimelineDate = (dateStr) => {
@@ -167,12 +175,12 @@ export default function CaseDetailModal({
       title: 'Policy Authority',
       desc: requiresApproval
         ? 'Awaiting Review'
-        : isExhausted
+        : isExhausted || isPostExhaustionRecovered
           ? 'Automation Stopped'
           : isFraud
             ? 'Recovery Blocked'
             : 'Recovery Permitted',
-      status: requiresApproval ? 'active' : isFraud || isExhausted ? 'blocked' : 'completed',
+      status: requiresApproval ? 'active' : isFraud || isExhausted || isPostExhaustionRecovered ? 'blocked' : 'completed',
       icon: ShieldCheck,
     },
   ];
@@ -189,11 +197,12 @@ export default function CaseDetailModal({
 
   const hasActiveOrRecoveredLink =
     !isExhausted &&
+    !isPostExhaustionRecovered &&
     !isRejected &&
     !isFraud &&
     (
       isExecuted ||
-      isRecovered ||
+      (isRecovered && !isPostExhaustionRecovered) ||
       Boolean(caseData.payment_link_url)
     );
 
@@ -218,7 +227,9 @@ export default function CaseDetailModal({
   if (isRecovered) {
     lifecycleSteps.push({
       title: 'Reconciled',
-      desc: `${formatCurrency(caseData.recovered_amount || caseData.amount)} Captured`,
+      desc: isPostExhaustionRecovered
+        ? `${formatCurrency(caseData.recovered_amount || caseData.amount)} Captured (Post-Exhaustion)`
+        : `${formatCurrency(caseData.recovered_amount || caseData.amount)} Captured`,
       status: 'completed',
       icon: CheckCircle2,
     });
@@ -229,7 +240,9 @@ export default function CaseDetailModal({
     if (isRecovered) {
       return {
         title: 'Payment Captured & Reconciled',
-        desc: 'Revenue has been fully recovered and verified via webhook capture. No further automated recovery is required.',
+        desc: isPostExhaustionRecovered
+          ? 'Revenue has been fully recovered and verified via webhook capture following automated retry exhaustion. No further outreach is required.'
+          : 'Revenue has been fully recovered and verified via webhook capture. No further automated recovery is required.',
         icon: CheckCircle2,
         color: '#059669',
       };
@@ -373,6 +386,7 @@ export default function CaseDetailModal({
                   <div style={{ fontSize: '0.78rem', color: '#065f46' }}>
                     Captured Payment ID: <code>{caseData.recovered_payment_id || 'N/A'}</code>
                     {caseData.recovered_at && ` • ${formatTimelineDate(caseData.recovered_at)}`}
+                    {isPostExhaustionRecovered && ' • Post-Exhaustion Payment'}
                   </div>
                 </div>
               </div>
@@ -512,10 +526,10 @@ export default function CaseDetailModal({
               {/* 2. Policy Authority (Python) */}
               <div className="governance-card policy">
                 <span className="governance-card-label">2. Policy Authority (Python)</span>
-                <span className="governance-card-value" style={{ color: requiresApproval ? '#d97706' : isExhausted || isFraud ? '#dc2626' : '#059669' }}>
+                <span className="governance-card-value" style={{ color: requiresApproval ? '#d97706' : isExhausted || isPostExhaustionRecovered || isFraud ? '#dc2626' : '#059669' }}>
                   {requiresApproval
                     ? 'Human Approval Required'
-                    : isExhausted
+                    : isExhausted || isPostExhaustionRecovered
                       ? 'Automation Stopped'
                       : isFraud
                         ? 'Recovery Blocked'
@@ -524,7 +538,7 @@ export default function CaseDetailModal({
                 <span className="governance-card-sub">
                   {caseData.amount >= 50000
                     ? 'Policy: ≥ ₹50,000 Threshold'
-                    : isExhausted
+                    : isExhausted || isPostExhaustionRecovered
                       ? 'Policy: Max Retries Exceeded'
                       : isFraud
                         ? 'Policy: Compliance Guardrail'
@@ -537,7 +551,9 @@ export default function CaseDetailModal({
                 <span className="governance-card-label">3. Execution Status</span>
                 <span className="governance-card-value" style={{ color: isRecovered ? '#059669' : isExecuted ? '#0284c7' : isRejected || isExhausted ? '#dc2626' : '#d97706' }}>
                   {isRecovered
-                    ? 'Recovered & Reconciled'
+                    ? isPostExhaustionRecovered
+                      ? 'Recovered Post-Exhaustion'
+                      : 'Recovered & Reconciled'
                     : isExecuted
                       ? isLinkPreserved ? 'Link Preserved' : 'Link Sent'
                       : isRejected
@@ -549,7 +565,7 @@ export default function CaseDetailModal({
                             : 'Awaiting Review'}
                 </span>
                 <span className="governance-card-sub">
-                  Channel: {caseData.payment_link_url ? 'Razorpay Payment Link' : isRecovered ? 'Reconciled' : 'None'}
+                  Channel: {caseData.payment_link_url ? (isPostExhaustionRecovered ? 'Reconciled (Link Cancelled)' : 'Razorpay Payment Link') : isRecovered ? 'Reconciled' : 'None'}
                 </span>
               </div>
             </div>
@@ -561,22 +577,23 @@ export default function CaseDetailModal({
 
           {/* Active Recovery Payment Link Box (Only display verified URL) */}
           {caseData.payment_link_url ? (
-            <div className="payment-link-box">
+            <div className="payment-link-box" style={isPostExhaustionRecovered ? { borderColor: '#e2e8f0', background: '#f8fafc' } : {}}>
               <div className="payment-link-details">
-                <span style={{ fontSize: '0.74rem', color: '#0284c7', fontWeight: 700, textTransform: 'uppercase' }}>
-                  Recovery Payment Link (Razorpay Test Mode)
+                <span style={{ fontSize: '0.74rem', color: isPostExhaustionRecovered ? '#64748b' : '#0284c7', fontWeight: 700, textTransform: 'uppercase' }}>
+                  {isPostExhaustionRecovered ? 'Historical Payment Link (Cancelled on Exhaustion)' : 'Recovery Payment Link (Razorpay Test Mode)'}
                 </span>
                 <a
                   href={caseData.payment_link_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="url"
+                  style={isPostExhaustionRecovered ? { color: '#64748b' } : {}}
                   title="Open official Razorpay payment link"
                 >
                   {caseData.payment_link_url}
                 </a>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                  <span>Link ID: <code style={{ color: '#0284c7' }}>{caseData.payment_link_id}</code></span>
+                  <span>Link ID: <code style={{ color: isPostExhaustionRecovered ? '#64748b' : '#0284c7' }}>{caseData.payment_link_id}</code></span>
                   {caseData.original_payment_link_id && caseData.original_payment_link_id !== caseData.payment_link_id && (
                     <span style={{ color: '#d97706' }}>
                       Pre-existing Link ID: <code>{caseData.original_payment_link_id}</code>
@@ -598,7 +615,7 @@ export default function CaseDetailModal({
                   href={caseData.payment_link_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn btn-primary btn-sm"
+                  className="btn btn-outline btn-sm"
                   aria-label="Open recovery payment link in new window"
                 >
                   <ExternalLink size={14} />
