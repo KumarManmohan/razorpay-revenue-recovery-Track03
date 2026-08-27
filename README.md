@@ -266,10 +266,10 @@ npm run build
 
 ## 🔍 Accessing the Application
 
-* **Merchant Recovery Dashboard**: [http://localhost:5173](http://localhost:5173) (Dev) or [http://127.0.0.1:8000/dashboard](http://127.0.0.1:8000/dashboard) (Built)
-* **Interactive API Documentation (Swagger)**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-* **Health Check Endpoint**: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
-* **KPI Metrics API**: [http://127.0.0.1:8000/recovery/stats](http://127.0.0.1:8000/recovery/stats)
+- **Merchant Dashboard (development):** `http://localhost:5173`
+- **Merchant Dashboard (built):** `http://127.0.0.1:8000/dashboard`
+- **API Documentation:** `http://127.0.0.1:8000/docs`
+- **Health Check:** `http://127.0.0.1:8000/health`
 
 ---
 
