@@ -385,7 +385,7 @@ def exhaust_recovery_case(
             )
 
         # Cancel eligible open recovery links for this case
-        cancelled_links = cancel_open_payment_links_for_case(case_dict, db_path=db_path)
+        cancelled_links = cancel_open_payment_links_for_case(case_dict, reason="retry_exhaustion", db_path=db_path)
         if cancelled_links:
             with conn:
                 existing_cancels = case_dict.get("cancelled_payment_links") or ""
@@ -978,12 +978,13 @@ def reject_case(
 def cancel_open_payment_links_for_case(
     case_dict: Dict[str, Any],
     paid_link_id: Optional[str] = None,
+    reason: str = "recovery_success",
     db_path: Optional[str] = None,
 ) -> List[str]:
     """
-    Safely cancels any open/outstanding Payment Links associated with the recovery case
-    once a payment has successfully reconciled it.
-    Does NOT cancel the paid link.
+    Safely cancels any open/outstanding Payment Links associated with the recovery case.
+    - When reason is 'recovery_success': cancels open sibling links after a payment succeeded (does not cancel the paid link).
+    - When reason is 'retry_exhaustion': cancels open links because automated recovery retry budget was exhausted.
     Never raises an exception (resilient to API / network errors).
     """
     case_id = case_dict.get("id")
@@ -1008,14 +1009,26 @@ def cancel_open_payment_links_for_case(
             res = cancel_payment_link(link_id)
             if res.get("status") == "cancelled":
                 cancelled_links.append(link_id)
-                add_audit_event(
-                    case_id=case_id,
-                    event_type="PAYMENT_LINK_CANCELLED_AFTER_RECOVERY",
-                    message=f"Outstanding Payment Link '{link_id}' was automatically cancelled after recovery succeeded.",
-                    metadata={
+                if reason in ("retry_exhaustion", "exhaustion"):
+                    event_type = "PAYMENT_LINK_CANCELLED_AFTER_EXHAUSTION"
+                    message = f"Outstanding Payment Link '{link_id}' was automatically cancelled because retry limit was exhausted."
+                    event_metadata = {
+                        "cancelled_payment_link_id": link_id,
+                        "cancellation_reason": "retry_exhaustion",
+                    }
+                else:
+                    event_type = "PAYMENT_LINK_CANCELLED_AFTER_RECOVERY"
+                    message = f"Outstanding Payment Link '{link_id}' was automatically cancelled after recovery succeeded."
+                    event_metadata = {
                         "cancelled_payment_link_id": link_id,
                         "paid_payment_link_id": paid_link_id,
-                    },
+                    }
+
+                add_audit_event(
+                    case_id=case_id,
+                    event_type=event_type,
+                    message=message,
+                    metadata=event_metadata,
                     db_path=db_path,
                 )
             elif res.get("status") == "failed":
@@ -1026,6 +1039,7 @@ def cancel_open_payment_links_for_case(
                     metadata={
                         "payment_link_id": link_id,
                         "error": res.get("error"),
+                        "cancellation_reason": reason,
                     },
                     db_path=db_path,
                 )
@@ -1171,7 +1185,7 @@ def reconcile_recovery_payment(
 
         # 4. Safely cancel remaining open links associated with this case
         paid_link_id = (metadata or {}).get("payment_link_id")
-        cancelled_links = cancel_open_payment_links_for_case(case_dict, paid_link_id=paid_link_id, db_path=db_path)
+        cancelled_links = cancel_open_payment_links_for_case(case_dict, paid_link_id=paid_link_id, reason="recovery_success", db_path=db_path)
         if cancelled_links:
             with conn:
                 existing_cancels = case_dict.get("cancelled_payment_links") or ""

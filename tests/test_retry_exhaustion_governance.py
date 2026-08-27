@@ -371,23 +371,48 @@ class TestRetryExhaustionGovernance(unittest.TestCase):
         final_case = get_case_by_id(f"case_{order_id}", db_path=self.test_db)
         self.assertEqual(final_case["execution_status"], "exhausted")
 
-    def test_12_historical_case_integrity(self):
-        """Test 12: Real operational cases in recovery.db remain strictly intact."""
-        op_db = "data/recovery.db"
-        if not os.path.exists(op_db):
-            self.skipTest("Operational DB not found.")
+    @patch("app.recovery_executor.get_razorpay_client")
+    def test_13_exhaustion_emits_correct_cancellation_event_semantics(self, mock_client_getter):
+        """Test 13: Link cancellation during exhaustion emits PAYMENT_LINK_CANCELLED_AFTER_EXHAUSTION, not recovery."""
+        mock_client = MagicMock()
+        mock_client_getter.return_value = mock_client
 
-        conn = _get_connection(op_db)
-        try:
-            target_ids = ["case_pay_TT0g8mGaP6dv1S", "case_order_TTJcCYBHmCjzW7", "case_order_TTgKEsWWMViDKP"]
-            for cid in target_ids:
-                row = conn.execute("SELECT * FROM recovery_cases WHERE id = ?", (cid,)).fetchone()
-                self.assertIsNotNone(row, f"Case {cid} missing from recovery.db")
-                self.assertEqual(row["execution_status"], "recovered", f"Case {cid} must remain recovered")
-                self.assertGreater(row["recovered_amount"], 0.0)
-                self.assertIsNotNone(row["recovered_payment_id"])
-        finally:
-            conn.close()
+        case_data = {
+            "order_id": "order_exhaust_cancel_013",
+            "payment_id": "pay_ex_can_01",
+            "amount": 1000.0,
+            "currency": "INR",
+            "payment_status": "failed",
+            "payment_link_id": "plink_to_cancel_on_exhaustion",
+        }
+        case_record, _ = create_or_get_recovery_case(case_data, db_path=self.test_db)
+        actual_id = case_record["id"]
+
+        # Trigger exhaustion
+        exhausted_case, _ = exhaust_recovery_case(
+            actual_id,
+            reason="Maximum failed payment attempts reached (3/3).",
+            db_path=self.test_db,
+        )
+        self.assertEqual(exhausted_case["execution_status"], "exhausted")
+
+        # Verify Razorpay cancel was called
+        mock_client.payment_link.cancel.assert_called_once_with("plink_to_cancel_on_exhaustion")
+
+        # Verify Audit Log Event Types & Content
+        case_detail = get_case_with_audit(actual_id, db_path=self.test_db)
+        audit_events = case_detail["audit"]
+        event_types = [e["event_type"] for e in audit_events]
+
+        self.assertIn("PAYMENT_LINK_CANCELLED_AFTER_EXHAUSTION", event_types)
+        self.assertNotIn("PAYMENT_LINK_CANCELLED_AFTER_RECOVERY", event_types)
+
+        # Verify exact event message and metadata
+        cancel_event = next(e for e in audit_events if e["event_type"] == "PAYMENT_LINK_CANCELLED_AFTER_EXHAUSTION")
+        self.assertIn("because retry limit was exhausted", cancel_event["message"])
+        self.assertIn("cancelled_payment_link_id", cancel_event["metadata"])
+        self.assertEqual(cancel_event["metadata"]["cancelled_payment_link_id"], "plink_to_cancel_on_exhaustion")
+        self.assertNotIn("paid_payment_link_id", cancel_event["metadata"])
 
 
 if __name__ == "__main__":

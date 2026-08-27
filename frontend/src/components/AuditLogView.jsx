@@ -77,6 +77,8 @@ export default function AuditLogView({ onSelectCase }) {
       case 'PAYMENT_LINK_CANCELLED':
       case 'PAYMENT_LINK_CANCELLED_AFTER_RECOVERY':
         return 'Sibling Link Cancelled';
+      case 'PAYMENT_LINK_CANCELLED_AFTER_EXHAUSTION':
+        return 'Recovery Link Cancelled (Exhausted)';
       case 'PAYMENT_LINK_CANCELLATION_SKIPPED':
         return 'Link Cancellation Skipped';
       case 'RECOVERY_EXHAUSTED':
@@ -127,6 +129,7 @@ export default function AuditLogView({ onSelectCase }) {
       case 'HUMAN_APPROVAL_REJECTED':
       case 'RECOVERY_BLOCKED':
       case 'RECOVERY_EXHAUSTED':
+      case 'PAYMENT_LINK_CANCELLED_AFTER_EXHAUSTION':
         return 'badge-rejected';
       case 'DUPLICATE_PAYMENT_DETECTED':
         return 'badge-approval';
