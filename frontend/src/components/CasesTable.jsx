@@ -78,9 +78,13 @@ export default function CasesTable({ cases, isLoading, onSelectCase }) {
       );
     }
     if (execStatus === 'executed') {
+      const isPreserved = Boolean(
+        item.original_payment_link_id &&
+        item.original_payment_link_id === item.payment_link_id
+      );
       return (
         <span className="badge badge-executed">
-          <CheckCircle size={12} /> Link Sent
+          <CheckCircle size={12} /> {isPreserved ? 'Link Preserved' : 'Link Sent'}
         </span>
       );
     }

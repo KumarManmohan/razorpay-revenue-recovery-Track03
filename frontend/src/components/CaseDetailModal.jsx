@@ -447,10 +447,12 @@ export default function CaseDetailModal({
                 <Send size={24} color="#0284c7" aria-hidden="true" />
                 <div>
                   <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#075985' }}>
-                    Link Sent
+                    {isLinkPreserved ? 'Link Preserved' : 'Link Sent'}
                   </div>
                   <div style={{ fontSize: '0.78rem', color: '#0369a1' }}>
-                    Recovery payment link created and active. Waiting for customer payment.
+                    {isLinkPreserved
+                      ? 'Existing active recovery payment link preserved. Waiting for customer payment.'
+                      : 'Recovery payment link created and active. Waiting for customer payment.'}
                   </div>
                 </div>
               </div>
@@ -537,7 +539,7 @@ export default function CaseDetailModal({
                   {isRecovered
                     ? 'Recovered & Reconciled'
                     : isExecuted
-                      ? 'Link Sent'
+                      ? isLinkPreserved ? 'Link Preserved' : 'Link Sent'
                       : isRejected
                         ? 'Rejected'
                         : isExhausted
