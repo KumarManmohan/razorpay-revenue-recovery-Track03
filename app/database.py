@@ -1253,7 +1253,8 @@ def get_dashboard_stats(db_path: Optional[str] = None) -> Dict[str, Any]:
             SELECT COUNT(*) AS cnt 
             FROM recovery_cases 
             WHERE (requires_human_approval = 1 OR execution_status = 'approval_required')
-              AND execution_status != 'recovered'
+              AND execution_status NOT IN ('recovered', 'exhausted', 'rejected', 'executed', 'approved')
+              AND (failure_category != 'FRAUD_OR_SECURITY' OR failure_category IS NULL)
             """
         ).fetchone()
         pending_approvals = int(pending_row["cnt"])

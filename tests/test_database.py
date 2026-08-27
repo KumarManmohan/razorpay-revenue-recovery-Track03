@@ -246,6 +246,64 @@ class TestDatabaseAndAuditTrail(unittest.TestCase):
         # 25,000 / 100,000 * 100 = 25.0%
         self.assertEqual(stats["recovery_rate_percentage"], 25.0)
 
+    def test_dashboard_stats_pending_approvals_excludes_terminal_states(self):
+        """Verify pending_approvals excludes exhausted, recovered, rejected, and executed cases."""
+        from app.database import get_dashboard_stats, exhaust_recovery_case, reject_case
+
+        # 1. Genuinely pending high-value case -> should be counted (1)
+        c1, _ = create_or_get_recovery_case({
+            "event_id": "evt_pend_01",
+            "payment_id": "pay_pend_01",
+            "amount": 60000.0,
+            "risk_status": "at_risk",
+        }, db_path=self.db_path)
+        update_recovery_decision(c1["id"], {
+            "action": "SEND_PAYMENT_LINK",
+            "requires_human_approval": True,
+        }, db_path=self.db_path)
+
+        # 2. Case with requires_human_approval=True but exhausted -> must NOT be counted
+        c2, _ = create_or_get_recovery_case({
+            "event_id": "evt_pend_02",
+            "payment_id": "pay_pend_02",
+            "amount": 750.0,
+            "risk_status": "at_risk",
+        }, db_path=self.db_path)
+        update_recovery_decision(c2["id"], {
+            "action": "NO_ACTION",
+            "requires_human_approval": True,
+        }, db_path=self.db_path)
+        exhaust_recovery_case(c2["id"], reason="3 attempts failed", db_path=self.db_path)
+
+        # 3. Case with requires_human_approval=True but recovered -> must NOT be counted
+        c3, _ = create_or_get_recovery_case({
+            "event_id": "evt_pend_03",
+            "payment_id": "pay_pend_03",
+            "amount": 50000.0,
+            "risk_status": "at_risk",
+        }, db_path=self.db_path)
+        update_recovery_decision(c3["id"], {
+            "action": "SEND_PAYMENT_LINK",
+            "requires_human_approval": True,
+        }, db_path=self.db_path)
+        reconcile_recovery_payment(c3["id"], recovered_payment_id="pay_rec_03", recovered_amount=50000.0, db_path=self.db_path)
+
+        # 4. Case with requires_human_approval=True but rejected -> must NOT be counted
+        c4, _ = create_or_get_recovery_case({
+            "event_id": "evt_pend_04",
+            "payment_id": "pay_pend_04",
+            "amount": 55000.0,
+            "risk_status": "at_risk",
+        }, db_path=self.db_path)
+        update_recovery_decision(c4["id"], {
+            "action": "SEND_PAYMENT_LINK",
+            "requires_human_approval": True,
+        }, db_path=self.db_path)
+        reject_case(c4["id"], approver="admin", reason="Fraud suspicion", db_path=self.db_path)
+
+        stats = get_dashboard_stats(db_path=self.db_path)
+        self.assertEqual(stats["pending_approvals"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

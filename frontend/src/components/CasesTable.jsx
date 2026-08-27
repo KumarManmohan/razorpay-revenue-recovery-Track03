@@ -23,7 +23,12 @@ export default function CasesTable({ cases, isLoading, onSelectCase }) {
       return item.execution_status === 'recovered';
     }
     if (statusFilter === 'APPROVAL') {
-      return item.requires_human_approval === 1 || item.execution_status === 'approval_required';
+      const isRecovered = item.execution_status === 'recovered';
+      const isExhausted = item.execution_status === 'exhausted' || item.failure_category === 'RECOVERY_EXHAUSTED';
+      const isRejected = item.execution_status === 'rejected' || item.failure_category === 'FRAUD_OR_SECURITY';
+      const isExecuted = item.execution_status === 'executed' || item.execution_status === 'approved';
+      return (item.requires_human_approval === 1 || item.execution_status === 'approval_required')
+        && !isRecovered && !isExhausted && !isRejected && !isExecuted;
     }
     if (statusFilter === 'LINK_SENT') {
       return item.execution_status === 'executed';
@@ -61,23 +66,28 @@ export default function CasesTable({ cases, isLoading, onSelectCase }) {
 
   const getStatusBadge = (item) => {
     const execStatus = item.execution_status;
-    const reqApproval = item.requires_human_approval === 1;
+    const isRecovered = execStatus === 'recovered';
+    const isExhausted = execStatus === 'exhausted' || item.failure_category === 'RECOVERY_EXHAUSTED';
+    const isRejected = execStatus === 'rejected' || item.failure_category === 'FRAUD_OR_SECURITY';
+    const isExecuted = execStatus === 'executed' || execStatus === 'approved';
+    const isCurrentlyAwaitingReview = (item.requires_human_approval === 1 || execStatus === 'approval_required')
+      && !isRecovered && !isExhausted && !isRejected && !isExecuted;
 
-    if (execStatus === 'recovered') {
+    if (isRecovered) {
       return (
         <span className="badge badge-executed">
           <CheckCircle size={12} /> Recovered
         </span>
       );
     }
-    if (execStatus === 'exhausted') {
+    if (isExhausted) {
       return (
         <span className="badge badge-rejected">
           <AlertTriangle size={12} /> Recovery Stopped
         </span>
       );
     }
-    if (execStatus === 'executed') {
+    if (isExecuted) {
       const isPreserved = Boolean(
         item.original_payment_link_id &&
         item.original_payment_link_id === item.payment_link_id
@@ -88,14 +98,14 @@ export default function CasesTable({ cases, isLoading, onSelectCase }) {
         </span>
       );
     }
-    if (execStatus === 'rejected') {
+    if (isRejected) {
       return (
         <span className="badge badge-rejected">
-          <XCircle size={12} /> Rejected
+          <XCircle size={12} /> {item.failure_category === 'FRAUD_OR_SECURITY' ? 'Recovery Blocked' : 'Rejected'}
         </span>
       );
     }
-    if (reqApproval || execStatus === 'approval_required') {
+    if (isCurrentlyAwaitingReview) {
       return (
         <span className="badge badge-approval">
           <Clock size={12} /> Awaiting Review

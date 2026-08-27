@@ -72,8 +72,13 @@ export default function CaseDetailModal({
   const isFraud = caseData.failure_category === 'FRAUD_OR_SECURITY';
   const isWait = caseData.decision_action === 'WAIT';
   const isInvestigate = caseData.decision_action === 'INVESTIGATE';
-  const isInvoice = caseData.decision_action === 'SEND_INVOICE';
-  const requiresApproval = (caseData.requires_human_approval === 1 || caseData.execution_status === 'approval_required') && !isRecovered && !isRejected && !isExhausted && !isPostExhaustionRecovered;
+  const requiresApproval = (caseData.requires_human_approval === 1 || caseData.execution_status === 'approval_required')
+    && !isRecovered
+    && !isRejected
+    && !isExhausted
+    && !isPostExhaustionRecovered
+    && !isExecuted
+    && caseData.execution_status !== 'approved';
   const isDemo = (caseData.id || '').startsWith('case_demo_');
 
   const formatTimelineDate = (dateStr) => {
