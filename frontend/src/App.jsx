@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from './api';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -15,12 +15,20 @@ export default function App() {
   const [cases, setCases] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [selectedCaseData, setSelectedCaseData] = useState(null);
   const [selectedAuditTrail, setSelectedAuditTrail] = useState([]);
   const [selectedAttempts, setSelectedAttempts] = useState([]);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [toasts, setToasts] = useState([]);
+
+  const isFetchingRef = useRef(false);
+  const selectedCaseIdRef = useRef(null);
+
+  useEffect(() => {
+    selectedCaseIdRef.current = selectedCaseId;
+  }, [selectedCaseId]);
 
   const addToast = (message, type = 'info') => {
     const id = Date.now();
@@ -34,33 +42,97 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const fetchData = async (isManualRefresh = false) => {
+  const fetchData = async (isManualRefresh = false, isBackground = false) => {
+    // Avoid concurrent fetch collisions if a request takes longer than the interval
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     if (isManualRefresh) setIsRefreshing(true);
-    else setIsLoading(true);
+    else if (!isBackground) setIsLoading(true);
 
     try {
-      const [statsRes, casesRes] = await Promise.all([
+      const promises = [
         api.getStats().catch(() => ({ stats: null })),
         api.getCases().catch(() => ({ cases: [] })),
-      ]);
+      ];
 
-      setStats(statsRes?.stats || null);
-      setCases(casesRes?.cases || []);
+      // If a case modal is currently open, seamlessly sync its latest details in the same cycle
+      const activeModalId = selectedCaseIdRef.current;
+      if (activeModalId) {
+        promises.push(api.getCaseDetails(activeModalId).catch(() => null));
+      }
+
+      const [statsRes, casesRes, detailRes] = await Promise.all(promises);
+
+      if (statsRes && statsRes.stats !== undefined) {
+        setStats(statsRes.stats);
+      }
+      if (casesRes && Array.isArray(casesRes.cases)) {
+        setCases(casesRes.cases);
+      }
+      if (detailRes && detailRes.case && selectedCaseIdRef.current === detailRes.case.id) {
+        setSelectedCaseData(detailRes.case);
+        setSelectedAuditTrail(detailRes.audit || []);
+        setSelectedAttempts(detailRes.attempts || []);
+      }
+
+      setLastUpdated(new Date());
 
       if (isManualRefresh) {
         addToast('Dashboard data refreshed successfully.', 'info');
       }
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err);
-      addToast('Failed to load dashboard data from backend.', 'error');
+      if (isManualRefresh || (!isBackground && isLoading)) {
+        addToast('Failed to load dashboard data from backend.', 'error');
+      }
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      isFetchingRef.current = false;
     }
   };
 
   useEffect(() => {
-    fetchData();
+    // Initial fetch on component mount
+    fetchData(false, false);
+
+    let intervalId = null;
+
+    const startPolling = () => {
+      if (!intervalId) {
+        intervalId = setInterval(() => {
+          if (document.visibilityState === 'visible') {
+            fetchData(false, true);
+          }
+        }, 5000);
+      }
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Immediate refresh upon regaining focus
+        fetchData(false, true);
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const handleSelectCase = async (caseId) => {

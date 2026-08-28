@@ -23,6 +23,11 @@ export default function Header({ onRefresh, isRefreshing, healthStatus, testRazo
         }}>
           <ShieldCheck size={15} color="var(--success)" />
           <span>Data Source: <strong>Razorpay Test Mode • SQLite Recovery Ledger</strong></span>
+          <span style={{ color: 'var(--border-color)', margin: '0 2px' }}>•</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--text-secondary)' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--success)', display: 'inline-block' }}></span>
+            Auto-refresh (5s)
+          </span>
         </div>
 
         <button
