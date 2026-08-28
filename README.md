@@ -138,7 +138,7 @@ The system implements a deterministic, category-aware customer communication lay
 4. **Retry Budget Exhaustion**: If a case accumulates 3 failed payment attempts (`MAX_FAILED_ATTEMPTS = 3`), automated recovery halts (`RECOVERY_EXHAUSTED`) and active recovery links are automatically cancelled to protect the customer.
 5. **Decoupled Automation State vs. Financial Outcome**: Automation state and financial outcome are tracked separately. If a customer successfully pays after automation was halted, the system safely reconciles the capture (`Automation Stopped + Financially Recovered`) without double-counting revenue.
 6. **Authoritative Amount Binding**: Link amounts and currencies derive strictly from verified server-side case records; client-side inputs cannot alter recovery amounts.
-7. **Idempotent Double-Payment Protection**: If a second capture webhook arrives for an already-recovered case, the system records it as a duplicate attempt (`DUPLICATE_PAYMENT_DETECTED`) without double-counting recovered revenue.
+7. **Duplicate-Payment Detection & Accounting Protection**: If a second capture webhook arrives for an already-recovered case, the system records `DUPLICATE_PAYMENT_DETECTED` and does not double-count recovered revenue. Preventing or reversing an external duplicate charge is outside the current scope.
 
 ---
 
@@ -377,3 +377,4 @@ The complete backend regression test suite contains **210 automated tests** (100
 * **Razorpay Subscription Recovery**: Automated dunning and smart retry scheduling via Razorpay Subscriptions API.
 * **Magic Checkout Abandonment**: Detecting abandoned checkout sessions and issuing targeted recovery links.
 * **Production Multi-Channel Dispatch**: Real SMTP / WhatsApp / SMS gateway adapters with merchant template management.
+* **Cross-Session Checkout Invalidation**: In a production implementation, active checkout sessions could be synchronized with server-side settlement state so stale sessions become non-actionable after payment capture, reducing the risk of concurrent duplicate captures.
