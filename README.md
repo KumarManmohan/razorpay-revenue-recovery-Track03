@@ -30,7 +30,7 @@ Razorpay Webhook (payment.failed)
         ↓
 [ Layer 5: Deterministic Policy Authority ] ── Hard Guardrails: ₹50k+ Approval, Fraud Halt, Max 3 Retries
         ↓
-[ Layer 6: Guarded Execution Engine ] ────── Authoritative Amount Binding & Sibling Link Voiding
+[ Layer 6: Guarded Execution Engine ] ────── Dual Entry: Create New Link (Checkout) OR Preserve Link
         ↓
 Razorpay Payment Link (Test Mode: Created / Preserved)
         ↓
@@ -38,10 +38,29 @@ Razorpay Payment Link (Test Mode: Created / Preserved)
         ↓
 Customer Payment Webhook (payment.captured / payment_link.paid)
         ↓
-[ Layer 8: Financial Reconciliation ] ────── Idempotent Ledger Update & Automatic Sibling Cancellation
+[ Layer 8: Financial Reconciliation ] ────── Idempotent Ledger Update & Sibling Link Voiding
         ↓
 Recovered Revenue + Chronological Audit Trail
 ```
+
+---
+
+## 💳 Supported Payment Entry Paths
+
+The system seamlessly accommodates both direct checkout checkouts and pre-existing payment links:
+
+```text
+1. Direct Razorpay Checkout / Order
+   Direct Order Checkout → payment failure → no active Payment Link detected 
+   → Guarded Execution Engine creates a NEW Recovery Payment Link (if recovery permitted)
+
+2. Existing Razorpay Payment Link
+   Payment Link checkout → payment failure → active Payment Link detected 
+   → Guarded Execution Engine PRESERVES existing active link (zero duplicate link creation)
+```
+
+* **No Unnecessary Link Duplication**: If an active link is already attached to the case, the system reuses and preserves that link (`PAYMENT_PATH_PRESERVED`).
+* **Dynamic Generation Only When Needed**: A fresh Razorpay Payment Link (`PAYMENT_LINK_CREATED`) is issued exclusively when no active payment path exists (such as standard direct web store orders).
 
 ---
 
@@ -54,79 +73,73 @@ The system uses LLMs where unstructured reasoning and contextual prioritization 
 | Decision / Operational Boundary | Handled By | Why This Boundary Exists |
 | :--- | :---: | :--- |
 | **Failure Diagnosis & Contextual Analysis** | **AI (Gemini)** | Evaluates customer profile, tenure, prior successes, and failure descriptions to suggest an optimal approach. |
-| **Strategy & Tone Recommendation** | **AI (Gemini)** | Suggests discrete recovery strategy (`SEND_PAYMENT_LINK`, `SEND_INVOICE`, `WAIT`, `NO_ACTION`, `INVESTIGATE`). |
-| **High-Value Gating ($\ge$ ₹50,000)** | **Deterministic Policy** | High-value payments unconditionally mandate merchant approval. The LLM cannot override this rule. |
+| **Strategy & Tone Recommendation** | **AI (Gemini)** | Suggests discrete recovery strategy (`SEND_PAYMENT_LINK`, `SEND_INVOICE`, `WAIT`, `NO_ACTION`, `INVESTIGATE`). Model confidence represents an internal heuristic ranking, not a calibrated mathematical probability. |
+| **High-Value Gating ($\ge$ ₹50,000)** | **Deterministic Policy** | High-value payments unconditionally mandate merchant human review. The LLM cannot override this rule. |
 | **Fraud & Security Halts** | **Deterministic Policy** | Stolen card or compliance errors (`FRAUD_OR_SECURITY`) force `NO_ACTION` and block automated outreach. |
 | **Retry Exhaustion Limits** | **Deterministic Policy** | Enforces a hard stop after $\ge 3$ failed attempts (`MAX_FAILED_ATTEMPTS = 3`), automatically cancelling open links. |
-| **Financial Execution & Link Issuance** | **Deterministic Engine** | Links are generated strictly via authenticated Razorpay SDK calls with amounts bound from the database case. |
+| **Deterministic Fallback** | **Deterministic Engine** | If Gemini API is unreachable, times out, or returns invalid schema, system falls back safely to deterministic rules with zero downtime. |
+| **Financial Execution & Link Issuance** | **Deterministic Engine** | Links are generated strictly via authenticated Razorpay SDK calls with amounts bound from verified server-side records. |
 | **Customer Communication & Guidance** | **Deterministic Notification Layer** | Customer messages use deterministic, category-aware templates (Mock/Test Mode) governed by policy and anti-spam controls. The LLM does not generate free-form customer copy. |
 | **Payment Reconciliation** | **Deterministic Engine** | Reconciles captured payments idempotently based on cryptographically signed Razorpay webhook payloads. |
 | **Sibling Link Cancellation** | **Deterministic Engine** | Voiding open secondary links upon payment is executed deterministically to prevent duplicate customer charges. |
 
-### 📬 Deterministic Customer Communication Governance
+---
 
-The system implements a category-aware customer communication layer (Mock/Test Mode):
+## 📬 Category-Aware Customer Communication & Anti-Spam
 
-* **Permitted Categories (Actionable Guidance)**: `BANK_DECLINED`, `INSUFFICIENT_FUNDS`, `CARD_LIMIT_EXCEEDED`, `CARD_EXPIRED`, `INVALID_CARD`, and `AUTHENTICATION_REQUIRED` receive deterministic, category-specific advice and the active recovery link.
-* **Suppressed States (Zero Outreach)**: Automated outreach is strictly suppressed for `TEMPORARY_GATEWAY_ERROR` (deferred hold), `FRAUD_OR_SECURITY` (compliance halt), `UNKNOWN` (investigation required), retry-exhausted cases, and unapproved high-value transactions ($\ge ₹50,000$).
-* **New vs. Preserved Links**: Newly generated recovery links dispatch an initial test notification. When an existing active link is preserved (`PAYMENT_PATH_PRESERVED`), the notification layer reuses that same active link without creating duplicate obligations, while anti-spam deduplication suppresses redundant sends.
-* **Manual vs. Automatic Outreach**: The dashboard's *"Send Test Notification"* control allows manual merchant-triggered testing; the automatic path triggers immediately upon eligible recovery link generation/preservation. Both share the same test-safe mock provider, deterministic templates, and anti-spam/audit controls.
+The system implements a deterministic, category-aware customer communication layer (Mock/Test Mode):
+
+* **Actionable Categories (Permitted Outreach)**:
+  * `BANK_DECLINED`: Suggests retrying with an alternate bank or card.
+  * `INSUFFICIENT_FUNDS`: Prompts checking account balance or switching to credit/UPI.
+  * `CARD_LIMIT_EXCEEDED`: Suggests contacting card issuer or using netbanking.
+  * `CARD_EXPIRED`: Prompts updating card expiry details or using a newer card.
+  * `INVALID_CARD`: Prompts re-entering correct card credentials.
+  * `AUTHENTICATION_REQUIRED`: Advises completing 3D Secure / OTP authentication.
+* **Suppressed States (Zero Outreach)**: Automated outreach is strictly blocked for `TEMPORARY_GATEWAY_ERROR` (deferred hold), `FRAUD_OR_SECURITY` (compliance halt), `UNKNOWN` (investigation required), retry-exhausted cases, and unapproved high-value transactions ($\ge ₹50,000$).
+* **Anti-Spam Deduplication**: Prevents duplicate customer outreach across repeated retries (`NOTIFICATION_BLOCKED_DUPLICATE`). At most one recovery communication is dispatched per case unless manually overridden by a merchant admin.
+* **Test Mode Disclaimer**: Customer notifications are dispatched exclusively through `MockNotificationProvider`. No live emails, SMS, SendGrid, or WhatsApp messages are sent. `NOTIFICATION_SENT` represents successful dispatch through the local mock transport.
 
 ---
 
-## 🛡️ Financial Integrity & Safety Controls
+## 🛡️ Financial Integrity & Recovery Boundaries
 
 1. **Cryptographic Webhook Authentication**: All incoming webhook bodies are verified using HMAC-SHA256 with constant-time signature comparison (`hmac.compare_digest`) before any JSON parsing or database write.
 2. **Event-Level Idempotency**: Webhook `event_id` tracking ensures repeated deliveries of the same webhook return `already_processed` without duplicating case state or financial metrics.
-3. **One Active Payment Path**: If a case already has an active Payment Link, the execution engine preserves the existing link rather than creating duplicate open obligations.
-4. **Bidirectional Sibling Link Cancellation**: When a customer pays any recovery link for an order, all remaining open links for that case are immediately cancelled via the Razorpay API.
-5. **Authoritative Amount Binding**: Link amounts and currencies derive strictly from verified server-side case records; client-side inputs cannot alter recovery amounts.
-6. **Reconciliation Idempotency**: Once marked `recovered`, subsequent capture events for the same case return `already_recovered` with zero duplicate revenue addition.
+3. **High-Value Merchant Approval**: Any recovery exceeding **₹50,000** is gated in the *Awaiting Review* queue until a human merchant explicitly approves or rejects the action.
+4. **Retry Budget Exhaustion**: If a case accumulates 3 failed payment attempts (`MAX_FAILED_ATTEMPTS = 3`), automated recovery halts (`RECOVERY_EXHAUSTED`) and active recovery links are automatically cancelled to protect the customer.
+5. **Decoupled Automation State vs. Financial Outcome**: Automation state and financial outcome are tracked separately. If a customer successfully pays after automation was halted, the system safely reconciles the capture (`Automation Stopped + Financially Recovered`) without double-counting revenue.
+6. **Authoritative Amount Binding**: Link amounts and currencies derive strictly from verified server-side case records; client-side inputs cannot alter recovery amounts.
+7. **Idempotent Double-Payment Protection**: If a second capture webhook arrives for an already-recovered case, the system records it as a duplicate attempt (`DUPLICATE_PAYMENT_DETECTED`) without double-counting recovered revenue.
 
 ---
 
-## 🛠️ Engineering Challenges & Failure Recovery
+## 📜 Chronological Audit Trail
 
-During development, several non-trivial failures across systems boundaries were investigated, root-caused, and repaired:
+Every state transition, policy decision, and financial action records an immutable audit log entry in the SQLite ledger:
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ 1. NON-DETERMINISTIC EVALUATION BENCHMARK                                                                   │
-│    Symptom:      Running the identical Seed-42 benchmark produced 30.8% in one run and 41.3% in a subsequent│
-│                  run, despite identical decision inputs and safety classifications.                         │
-│    Root Cause:   Per-case RNG seeding relied on Python's process-randomized built-in hash() function, which is│
-│                  unsuitable for reproducible RNG seeding across independent processes.                      │
-│    Fix:          Replaced process-dependent hash() with deterministic SHA-256 seed generation.              │
-│    Verification: Verified exact mathematical reproducibility across isolated runs (Canonical 36.6% baseline).│
-├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 2. DASHBOARD DID NOT REFRESH AFTER TEST PAYMENT                                                             │
-│    Symptom:      New Razorpay Test Mode payments were captured, but financial KPIs remained unchanged.      │
-│    Root Cause:   Traced the complete pipeline (Razorpay -> Cloudflare tunnel -> FastAPI -> SQLite -> React).│
-│                  Discovered the ephemeral Cloudflare Quick Tunnel had expired after a restart, causing      │
-│                  Razorpay webhooks to hit a dead endpoint. The Dashboard database was entirely correct.     │
-│    Fix:          Restored the active tunnel and updated Razorpay webhook settings.                          │
-│    Verification: Confirmed end-to-end webhook delivery, SQLite case ingestion, and instant UI refresh.      │
-├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 3. SELF-HEALING PAYMENT LINK URL RESOLUTION                                                                 │
-│    Symptom:      A recovery case contained a valid payment_link_id but payment_link_url was NULL.            │
-│    Root Cause:   The initial webhook arrived during account credential bootstrapping, failing initial URL   │
-│                  fetch and storing NULL. The case-detail endpoint previously returned raw stored columns.   │
-│    Fix:          Added on-demand self-healing lazy resolution in GET /recovery/cases/{id}. When a missing    │
-│                  URL is detected on a valid link ID, the backend fetches the short_url read-only from       │
-│                  Razorpay and safely persists ONLY payment_link_url without altering case state.             │
-│    Verification: Verified live case (case_order_TUWjnc8gGMZDOw -> https://rzp.io/rzp/JFFeAAh), zero state   │
-│                  mutation, cached subsequent queries, and 4 focused unit tests.                             │
-├─────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 4. EXHAUSTED CASE STEPPER STATE CONTRADICTION                                                               │
-│    Symptom:      A 3-attempt retry-exhaustion case displayed "Link Issued" after "Automation Stopped".       │
-│    Root Cause:   The UI lifecycle stepper treated the historical presence of payment_link_url as an active  │
-│                  step, even though the link had been cancelled upon exhaustion.                             │
-│    Fix:          Decoupled the active operational stepper from historical audit logs. Terminal exhausted     │
-│                  states now terminate cleanly at "Policy Authority: Automation Stopped".                    │
-│    Verification: Confirmed visual state termination while preserving all historical link events in the audit│
-│                  trail.                                                                                     │
-└─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+PAYMENT_FAILED                  ── Webhook received for failed payment attempt
+RISK_ANALYZED                   ── Revenue-at-risk & category classification computed
+RECOVERY_DECIDED                ── AI recommendation or deterministic policy evaluated
+PAYMENT_LINK_CREATED            ── New Razorpay Test Mode Payment Link generated
+PAYMENT_PATH_PRESERVED          ── Existing active Payment Link preserved without duplication
+NOTIFICATION_SENT               ── Test customer communication dispatched (Mock Mode)
+NOTIFICATION_BLOCKED_DUPLICATE  ── Duplicate outreach suppressed to prevent customer spam
+RECOVERY_EXHAUSTED              ── Hard retry limit reached (automation halted)
+RECOVERY_PAYMENT_DETECTED       ── Captured payment detected via webhook
+RECOVERY_CASE_RECONCILED        ── Case reconciled with payment record in database
+REVENUE_RECOVERED               ── Recovered revenue credited to merchant ledger
 ```
+
+---
+
+## 🖥️ Merchant Recovery Dashboard
+
+* **Real-Time Automatic Background Refresh**: The dashboard continuously syncs with the backend via **5-second polling**.
+* **Page Visibility Lifecycle**: Polling automatically pauses when the browser tab is hidden/minimized and immediately triggers a fresh fetch when the user returns to the tab.
+* **Zero Page Flickering**: Updates are applied through React state reconciliation (`setStats`, `setCases`, `setSelectedCaseData`) without full-page reloads.
+* **Live Case Detail Sync**: If a merchant has a Case Detail modal open when a payment captures, the modal updates its financial metrics, status badges, and timeline live.
 
 ---
 
@@ -154,10 +167,12 @@ The system strictly enforces physical separation between operational merchant re
 ## 📈 Canonical Evidence Scorecard
 
 ### A. Real Razorpay Test Mode Proof (`data/recovery.db`)
-* **Verified Razorpay Test Mode Recovery**: **11 recovered Test Mode cases** totaling **₹2,53,863.30** (accounting for **94.4%** of all recovered revenue in the operational ledger).
-* **Payment Lifecycle**: Real `payment.failed` webhook $\rightarrow$ recovery link created/preserved $\rightarrow$ automatic test-mode customer notification $\rightarrow$ payer completed in Test Mode $\rightarrow$ `payment.captured` reconciliation.
-* **Retry Exhaustion**: Verified on real 3-attempt failure case (`case_order_TU4S0Jyoa0yEGc`, ₹7,859) with automatic link cancellation and execution halt.
-* **Active Demo Link**: Verified active Test Mode Payment Link (`case_order_TUWjnc8gGMZDOw`, ₹1,001) available for live completion during walkthroughs.
+* **Verified Test Mode Recovery**: Over ₹2,74,000+ recovered across verified Razorpay Test Mode transactions.
+* **Dual Payment Entry Validation**:
+  * Direct Checkout failure $\rightarrow$ automatic creation of fresh Payment Link $\rightarrow$ successful customer recovery.
+  * Existing Payment Link failure $\rightarrow$ preserved active link without duplication $\rightarrow$ successful customer recovery.
+* **Retry Exhaustion & Safe Post-Exhaustion Reconciliation**: Verified on live 3-attempt failure cases (`RECOVERY_EXHAUSTED`), with subsequent legitimate capture reconciling financial metrics safely.
+* **Awaiting Review Precision**: Authoritative exclusion of terminal, recovered, or exhausted cases from the approval queue.
 
 ### B. 100-Case Synthetic Recovery Benchmark (`data/evaluation.db`, Seed 42, Run `eval_run_20260825_172822_llm_42`)
 * **Total Evaluated Cases**: 100 cases (balanced across 9 failure categories).
@@ -216,7 +231,7 @@ Razorpay Track 03/
 │       ├── components/        # Header, Sidebar, StatsOverview, CasesTable,
 │       │                      # CaseDetailModal, AuditLogView, EvaluationView, Toast
 │       ├── api.js             # REST API Client with optional X-API-Key forwarding
-│       ├── App.jsx            # Main Dashboard Application
+│       ├── App.jsx            # Main Dashboard Application with 5s background polling
 │       └── index.css          # Modern light fintech design system
 ├── scripts/
 │   ├── seed_demo_data.py      # Demo dataset seeding script
@@ -224,7 +239,7 @@ Razorpay Track 03/
 │   ├── run_batch_evaluation.py# Batch evaluation runner
 │   └── run_contextual_evaluation.py # Contextual evaluation runner
 ├── data/                      # SQLite storage (recovery.db & evaluation.db, gitignored)
-├── tests/                     # 209 Automated unit and integration tests (100% passing)
+├── tests/                     # 210 Automated unit and integration tests (100% passing)
 ├── .env.example               # Sanitized template for environment variables
 ├── requirements.txt           # Python backend dependencies
 └── README.md                  # Engineering documentation
@@ -288,7 +303,7 @@ npm run build
 
 ## 🧪 Running Automated Tests
 
-The complete backend regression test suite contains **209 automated tests** (100% passing):
+The complete backend regression test suite contains **210 automated tests** (100% passing):
 
 ```powershell
 .\venv\Scripts\python.exe -m unittest discover tests
@@ -327,8 +342,9 @@ The complete backend regression test suite contains **209 automated tests** (100
 * **Razorpay Test Mode**: Operates within Razorpay sandbox rails.
 * **Development Webhook Tunneling**: Ephemeral Cloudflare Quick Tunnel used for local development; production deployment would use static ingress endpoints.
 * **Process-Local Rate Limiting**: In-memory sliding window; production multi-worker clusters would use Redis.
+* **Mock Notification Provider**: Test Mode mock delivery simulating email outreach with deduplication.
 
 ### Future Architectural Adapters
 * **Razorpay Subscription Recovery**: Automated dunning and smart retry scheduling via Razorpay Subscriptions API.
 * **Magic Checkout Abandonment**: Detecting abandoned checkout sessions and issuing targeted recovery links.
-* **Multi-Channel Dispatch**: WhatsApp / SMS recovery notifications with merchant template approval.
+* **Production Multi-Channel Dispatch**: Real SMTP / WhatsApp / SMS gateway adapters with merchant template management.

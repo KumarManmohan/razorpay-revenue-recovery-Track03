@@ -36,3 +36,7 @@ cloudflared.exe
 .idea/
 .DS_Store
 Thumbs.db
+
+# Scratch / Local testing utilities
+scratch/
+
