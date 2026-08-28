@@ -4,7 +4,7 @@
 
 **Failed payments mean lost revenue. But giving an LLM direct authority over financial actions creates a different risk.**
 
-This project explores a middle ground: **AI provides contextual judgment, while deterministic policy controls what the system is allowed to do.** When a Razorpay payment fails, the system analyzes the failure and customer context, recommends a recovery strategy, applies safety rules, executes only permitted recovery actions, communicates with the customer through bounded templates, and verifies the financial outcome through Razorpay webhooks.
+The system takes a middle ground: **AI provides contextual judgment, while deterministic policy controls what the system is allowed to do.** When a Razorpay payment fails, the system analyzes the failure and customer context, recommends a recovery strategy, applies safety rules, executes only permitted recovery actions, communicates with the customer through bounded templates, and verifies the financial outcome through Razorpay webhooks.
 
 **AI recommends. Policy governs. Execution enforces. Notification communicates.**
 
