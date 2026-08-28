@@ -15,6 +15,28 @@ Payment failures in online commerce are a major source of revenue leakage, yet r
 
 ---
 
+## 🔬 Engineering Journey & Key Decisions
+
+This project is an **AI-assisted revenue recovery system for Razorpay merchants**. It processes failed payment webhooks by combining contextual AI evaluation with strict deterministic policy governance, automated execution, category-aware customer outreach, and webhook-driven financial reconciliation.
+
+```text
+Payment Failure → Failure Analysis → Gemini Recommendation → Deterministic Policy
+→ Recovery Execution → Customer Communication → Razorpay Webhook → Reconciliation → Audit
+```
+
+During iterative development and live Test Mode validation, several critical system-level discoveries shaped the final architecture:
+
+1. **Dual Payment Entry Paths**: Failed payments originate either from direct store checkout (`client.order.create`) or pre-existing Razorpay Payment Links. The engine dynamically issues a fresh link (`PAYMENT_LINK_CREATED`) only when no active path exists; for existing payment links, it preserves the active link (`PAYMENT_PATH_PRESERVED`) to eliminate duplicate customer obligations.
+2. **Decoupled Automation State vs. Financial Outcome**: Testing revealed that automation stopping upon retry exhaustion (`RECOVERY_EXHAUSTED`) is distinct from financial reconciliation. If a customer subsequently completes a payment via an in-flight checkout, the system safely records `Automation Stopped + Financially Recovered` without double-counting revenue.
+3. **Actionable Current State vs. Historical Metadata**: Historical approval metadata previously leaked resolved cases into the merchant review tab. The queue was re-architected so *Awaiting Review* strictly reflects cases currently requiring merchant intervention, excluding terminal or recovered records.
+4. **Bounded Customer Communication**: Free-form LLM-generated customer outreach was rejected in favor of deterministic, category-aware templates (e.g., bank decline vs. insufficient funds) paired with anti-spam deduplication (`NOTIFICATION_BLOCKED_DUPLICATE`). Outreach operates under `MockNotificationProvider` for safe local simulation.
+5. **Dashboard State Synchronization**: To eliminate manual browser refreshes after asynchronous webhook arrivals, a centralized 5-second polling loop with Page Visibility lifecycle management was implemented, avoiding the operational complexity of WebSockets or SSE for this deployment tier.
+6. **Authoritative Source of Truth**: Local browser-side checkout callbacks can fire in simulation without server-side settlement. The system treats verified Razorpay `payment.captured` webhooks as the authoritative server-side signal used to confirm financial recovery.
+
+The implementation is verified by **210 automated backend tests (100% passing)** and validated across live Razorpay Test Mode payment flows. All operations run strictly under Test Mode with mock notifications and zero live financial exposure.
+
+---
+
 ## 🏛️ System Architecture
 
 ```text
