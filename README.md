@@ -196,24 +196,25 @@ The system strictly enforces physical separation between operational merchant re
 * **Retry Exhaustion & Safe Post-Exhaustion Reconciliation**: Verified on live 3-attempt failure cases (`RECOVERY_EXHAUSTED`), with subsequent legitimate capture reconciling financial metrics safely.
 * **Awaiting Review Precision**: Authoritative exclusion of terminal, recovered, or exhausted cases from the approval queue.
 
-### B. 100-Case Synthetic Recovery Benchmark (`data/evaluation.db`, Seed 42, Run `eval_run_20260825_172822_llm_42`)
+### B. 100-Case Synthetic Recovery Benchmark (`data/evaluation.db`, Seed 42, Canonical Run `eval_run_20260826_173735_deterministic_42`)
 * **Total Evaluated Cases**: 100 cases (balanced across 9 failure categories).
-* **Simulated Historical Exposure**: ₹1,561,712.61.
-* **Simulated Recovered Revenue**: ₹480,965.86.
-* **Simulated Recovery Rate**: 30.8% (Historical run preserved; Canonical deterministic baseline: 36.6%).
+* **Simulated Total Exposure**: ₹1,561,712.61.
+* **Simulated Recovered Revenue**: ₹571,587.12.
+* **Canonical Simulated Recovery Rate**: **36.6%** on the reproducible Seed-42 evaluation dataset. Under deterministic SHA-256 simulation seeding, both LLM and deterministic evaluation modes produce the same canonical 36.6% simulated recovery rate on these identical synthetic cases.
+* **Historical Pre-Fix Artifact**: An earlier run recorded 30.8% (`eval_run_20260825_172822_llm_42`, ₹480,965.86). That historical run was affected by Python's process-randomized built-in `hash()` function for simulation seeding (documented in Engineering Challenge #1) and is a development artifact rather than an AI-vs-deterministic performance comparison.
 * **Simulated Human-Approved Recovery**: ₹114,347.17 (44 cases gated for merchant review).
 * **Simulated Blocked Fraud Exposure**: ₹176,576.76 (11 cases, 100% compliance halted, 0 leakage).
 * **Simulated Retry Exhaustion Stops**: ₹417,628.21 (17 cases stopped after $\ge 3$ failed attempts).
 * **Financial Policy Violations**: 0 (100% safety compliance).
 
 ### C. 16-Case Synthetic Contextual Intelligence Evaluation (`data/evaluation.db`, Run `ctx_eval_20260824_214431`)
-* **Evaluated Scenarios**: 16 multi-signal cases (Scenarios A through P).
-* **Policy Action Safety Agreement**: 100.0% (16/16).
-* **Priority Alignment**: 75.0% (12/16).
-* **Escalation Alignment**: 75.0% (12/16).
+* **Evaluated Scenarios**: 16 multi-signal cases (Scenarios A through P: customer tenure, prior ignored links, transient vs. persistent outages).
+* **Policy Safety Agreement**: 100.0% (16/16 compliance with deterministic financial guardrails).
+* **Priority Alignment**: 75.0% (12/16 agreement with ground-truth business urgency).
+* **Escalation Alignment**: 75.0% (12/16 agreement with human escalation recommendations).
 * **Explanation Quality**: 3.12 / 4.0 average rubric score.
 
-> **Simulation Limitation Disclosure**: Synthetic recovery outcomes are generated using predefined category and conversion assumptions within a controlled benchmark harness; they do not represent live customer payments.
+> **Simulation Limitation Disclosure**: Synthetic recovery outcomes are generated using predefined category and conversion assumptions within a controlled benchmark harness; they do not represent live customer payments or empirical production recovery rates.
 
 ---
 
