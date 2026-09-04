@@ -107,6 +107,30 @@ export default function CaseDetailModal({
 
   // Merchant-friendly failure descriptions
   const getFriendlyFailureDescription = () => {
+    if (isRecovered) {
+      switch (caseData.failure_category) {
+        case 'BANK_DECLINED':
+          return 'Initial payment attempt was declined by the bank.';
+        case 'INSUFFICIENT_FUNDS':
+          return 'Initial payment attempt failed due to insufficient funds in customer account.';
+        case 'CARD_LIMIT_EXCEEDED':
+          return 'Initial payment attempt exceeded the card spending limit.';
+        case 'CARD_EXPIRED':
+          return 'Initial payment attempt failed due to an expired card.';
+        case 'AUTHENTICATION_REQUIRED':
+          return 'Initial payment attempt was not completed during 3DS authentication.';
+        case 'INVALID_CARD_DETAILS':
+        case 'INVALID_CARD':
+          return 'Initial payment attempt failed due to invalid card credentials.';
+        case 'GATEWAY_ERROR':
+        case 'TEMPORARY_GATEWAY_ERROR':
+          return 'Initial payment attempt encountered a temporary gateway timeout.';
+        case 'RECOVERY_EXHAUSTED':
+          return 'Payment was recovered after initial automated retry attempts were exhausted.';
+        default:
+          return 'Initial payment attempt failed prior to successful recovery.';
+      }
+    }
     if (caseData.error_description) return caseData.error_description;
     switch (caseData.failure_category) {
       case 'BANK_DECLINED':
@@ -120,8 +144,10 @@ export default function CaseDetailModal({
       case 'AUTHENTICATION_REQUIRED':
         return '3DS customer two-factor authorization was not completed.';
       case 'INVALID_CARD_DETAILS':
+      case 'INVALID_CARD':
         return 'Card number, expiry, or CVV security code was invalid.';
       case 'GATEWAY_ERROR':
+      case 'TEMPORARY_GATEWAY_ERROR':
         return 'Temporary banking gateway network timeout encountered.';
       case 'FRAUD_OR_SECURITY':
         return 'Security restriction flagged on transaction to prevent unauthorized charge.';
@@ -364,15 +390,17 @@ export default function CaseDetailModal({
               <div className="modal-hero-title">
                 {formatCurrency(caseData.amount)} Payment {isRecovered ? 'Recovered' : 'Failed'}
               </div>
-              <span className="badge badge-approval">
-                {caseData.failure_category_label || caseData.failure_category || 'Failed'}
+              <span className={`badge ${isRecovered ? 'badge-pending' : 'badge-approval'}`}>
+                {isRecovered
+                  ? `Initial Attempt · ${caseData.failure_category_label || caseData.failure_category || 'Failed'}`
+                  : (caseData.failure_category_label || caseData.failure_category || 'Failed')}
               </span>
             </div>
             <div className="modal-hero-desc">
               {getFriendlyFailureDescription()}
             </div>
             <div className="modal-hero-meta">
-              <span>Payment: <code>{caseData.payment_id || 'N/A'}</code></span>
+              <span>Original Failed Payment: <code>{caseData.payment_id || 'N/A'}</code></span>
               {caseData.order_id && <span>Order: <code>{caseData.order_id}</code></span>}
               <span>Type: {caseData.is_recurring_revenue ? 'Subscription' : 'One-Time Order'}</span>
               {caseData.created_at && <span>Failed at: {formatTimelineDate(caseData.created_at)}</span>}

@@ -150,14 +150,14 @@ export default function EvaluationView() {
           onClick={() => setActiveTab('contextual')}
         >
           <Sparkles size={16} />
-          <span>Contextual AI Intelligence (Milestone C)</span>
+          <span>Contextual AI Intelligence</span>
         </button>
         <button 
           className={`eval-tab-btn ${activeTab === 'batch' ? 'active' : ''}`}
           onClick={() => setActiveTab('batch')}
         >
           <Layers size={16} />
-          <span>Batch Recovery Simulation (Milestone B)</span>
+          <span>Batch Recovery Simulation</span>
         </button>
       </div>
 
